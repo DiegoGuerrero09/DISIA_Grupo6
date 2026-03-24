@@ -1,0 +1,37 @@
+{
+  "logistic_regression": {
+    "C": 5.703220941540322,
+    "penalty": "l2",
+    "class_weight": "balanced"
+  },
+  "random_forest": {
+    "class_weight": "balanced_subsample",
+    "n_estimators": 400,
+    "max_depth": 19,
+    "min_samples_leaf": 9
+  },
+  "lightgbm": {
+    "scale_pos_weight": 3.56,
+    "n_estimators": 450,
+    "learning_rate": 0.08951607509392116,
+    "max_depth": 5,
+    "num_leaves": 107,
+    "min_child_samples": 15,
+    "reg_alpha": 0.2872625748228286,
+    "reg_lambda": 0.987140522099518,
+    "subsample": 0.8340187281561661,
+    "colsample_bytree": 0.7558495941631742
+  },
+  "xgboost": {
+    "scale_pos_weight_xgb": 3.56,
+    "n_estimators": 350,
+    "learning_rate": 0.06484606395788177,
+    "max_depth": 6,
+    "min_child_weight": 1,
+    "reg_alpha": 0.29695757599130046,
+    "reg_lambda": 0.3699788714938064,
+    "subsample": 0.9851907753825341,
+    "colsample_bytree": 0.7586902075088483
+  },
+  "threshold_optimo": 0.5900000000000003
+}
