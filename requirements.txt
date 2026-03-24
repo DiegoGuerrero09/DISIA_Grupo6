@@ -1,4 +1,29 @@
-matplotlib==3.10.6
+# ── CARDIS — Dependencias del proyecto ─────────────────────────────────────────
+# Compatible con Python 3.10+
+# Instalación: pip install -r requirements.txt
+
+# Core
 numpy==2.2.6
 pandas==2.3.3
+scipy==1.15.3
+
+# Visualización
+matplotlib==3.10.6
 seaborn==0.13.2
+
+# Machine Learning
+scikit-learn==1.7.2
+lightgbm==4.6.0
+xgboost==3.0.5
+
+# Optimización de hiperparámetros
+optuna==4.4.0
+
+# Explicabilidad
+shap==0.51.0
+
+# Serialización
+joblib==1.5.2
+
+# Jupyter
+ipykernel==6.30.1
