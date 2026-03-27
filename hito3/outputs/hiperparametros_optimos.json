@@ -33,5 +33,5 @@
     "subsample": 0.9851907753825341,
     "colsample_bytree": 0.7586902075088483
   },
-  "threshold_optimo": 0.5900000000000003
+  "threshold_optimo": 0.59
 }
