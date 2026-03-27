@@ -1,0 +1,7 @@
+par,delta_f1,p_valor,significativo
+Regresión Logística vs Random Forest,-0.03598799228402294,0.0625,No
+Regresión Logística vs LightGBM,0.0038296877778262184,0.8125,No
+Regresión Logística vs XGBoost,0.00193751680406129,0.8125,No
+Random Forest vs LightGBM,0.03981768006184916,0.0625,No
+Random Forest vs XGBoost,0.03792550908808423,0.0625,No
+LightGBM vs XGBoost,-0.0018921709737649284,0.8125,No
