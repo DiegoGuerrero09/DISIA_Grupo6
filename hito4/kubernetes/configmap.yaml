@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cardis-config
+  namespace: cardis
+data:
+  CARDIS_LOG_LEVEL: "INFO"
+  CARDIS_STORAGE_BACKEND: "minio"
+  CARDIS_MODEL_DIR: "/app/models"
+  CARDIS_DATA_DIR: "/app/data"
+  MINIO_ENDPOINT: "minio.cardis.svc.cluster.local:9000"
+  MINIO_BUCKET: "cardis-models"
+  MLFLOW_TRACKING_URI: "http://mlflow.cardis.svc.cluster.local:5000"
+  MLFLOW_EXPERIMENT_NAME: "cardis-cardiovascular"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cardis-secrets
+  namespace: cardis
+type: Opaque
+stringData:
+  # En un cluster real estos valores deberian rotarse y guardarse en
+  # Vault/SealedSecrets. Los dejo aquí solo para reproducibilidad academica.
+  MINIO_ACCESS_KEY: "minioadmin"
+  MINIO_SECRET_KEY: "minioadmin"
+  AWS_ACCESS_KEY_ID: "minioadmin"
+  AWS_SECRET_ACCESS_KEY: "minioadmin"

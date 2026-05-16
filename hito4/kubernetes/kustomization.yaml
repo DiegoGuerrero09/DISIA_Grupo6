@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: cardis
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - minio.yaml
+  - mlflow.yaml
+  - train-job.yaml
+  - inferer-deployment.yaml
+  - ingress.yaml
+
+images:
+  - name: cardis/trainer
+    newTag: 1.0.0
+  - name: cardis/inferer
+    newTag: 1.0.0
+  - name: cardis/mlflow
+    newTag: 1.0.0

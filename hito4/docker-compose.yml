@@ -1,0 +1,143 @@
+# =============================================================================
+# CARDIS - Despliegue local con docker-compose (Hito 4)
+# -----------------------------------------------------------------------------
+# Tres servicios principales:
+#   - trainer  : ejecuta el pipeline de entrenamiento (corre y se detiene).
+#   - inferer  : sirve la API de inferencia (FastAPI + Open Inference Protocol).
+#   - minio    : almacenamiento de modelos S3-compatible (BONUS del Hito 4).
+#   - mlflow   : tracking de experimentos (BONUS del Hito 4).
+#
+# Uso:
+#   1) docker compose --profile train up trainer
+#   2) docker compose up -d inferer minio mlflow
+# =============================================================================
+version: "3.9"
+
+# Volumenes compartidos: el contenedor de entrenamiento escribe los
+# artefactos en /app/models y el de inferencia los lee de la misma ruta.
+volumes:
+  cardis-models:
+  cardis-data:
+  minio-data:
+  mlflow-data:
+
+# Red interna para que los servicios se descubran por nombre.
+networks:
+  cardis-net:
+    driver: bridge
+
+services:
+  # ---------------------------------------------------------------- trainer
+  trainer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.train
+    image: cardis/trainer:1.0.0
+    container_name: cardis-trainer
+    profiles: ["train"]
+    environment:
+      CARDIS_RAW_TRAIN: /app/data/raw/cardis_train.csv
+      CARDIS_MODEL_DIR: /app/models
+      CARDIS_STORAGE_BACKEND: ${CARDIS_STORAGE_BACKEND:-local}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: cardis-models
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-}
+      MLFLOW_EXPERIMENT_NAME: cardis-cardiovascular
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - ./data:/app/data:ro
+      - cardis-models:/app/models
+    networks: [cardis-net]
+    depends_on:
+      minio:
+        condition: service_healthy
+        required: false
+
+  # ---------------------------------------------------------------- inferer
+  inferer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.infer
+    image: cardis/inferer:1.0.0
+    container_name: cardis-inferer
+    environment:
+      CARDIS_MODEL_DIR: /app/models
+      CARDIS_STORAGE_BACKEND: ${CARDIS_STORAGE_BACKEND:-local}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: cardis-models
+      CARDIS_LOG_LEVEL: INFO
+    ports:
+      - "8080:8080"
+    volumes:
+      - cardis-models:/app/models:ro
+    networks: [cardis-net]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v2/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------- MinIO
+  minio:
+    image: minio/minio:RELEASE.2024-09-22T00-33-43Z
+    container_name: cardis-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"  # API S3
+      - "9001:9001"  # Consola web
+    volumes:
+      - minio-data:/data
+    networks: [cardis-net]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 20s
+      timeout: 3s
+      retries: 5
+
+  # ---------------------------------------------------------------- minio init
+  minio-bucket:
+    image: minio/mc:RELEASE.2024-09-16T17-43-14Z
+    container_name: cardis-minio-bucket
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks: [cardis-net]
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb -p local/cardis-models || true &&
+      mc mb -p local/cardis-mlflow || true &&
+      echo 'Buckets creados';
+      "
+
+  # ---------------------------------------------------------------- MLflow
+  mlflow:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.mlflow
+    image: cardis/mlflow:1.0.0
+    container_name: cardis-mlflow
+    depends_on:
+      minio:
+        condition: service_healthy
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow-data:/mlflow
+    networks: [cardis-net]
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+    restart: unless-stopped

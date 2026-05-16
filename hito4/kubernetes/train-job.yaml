@@ -1,0 +1,52 @@
+# Job de entrenamiento. Se reejecuta on-demand (cada vez que cambian los
+# datos o el codigo) y deposita el modelo en MinIO. Una vez completo
+# termina; no consume recursos en estado estacionario.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cardis-trainer
+  namespace: cardis
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 86400  # se elimina solo a las 24h
+  template:
+    metadata:
+      labels:
+        app: cardis-trainer
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: trainer
+          image: cardis/trainer:1.0.0
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: cardis-config
+            - secretRef:
+                name: cardis-secrets
+          resources:
+            requests:
+              cpu: "1"
+              memory: "2Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+              readOnly: true
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: cardis-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cardis-data
+  namespace: cardis
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi
