@@ -1,0 +1,42 @@
+# =============================================================================
+# Imagen de ENTRENAMIENTO de CARDIS
+# -----------------------------------------------------------------------------
+# El contenedor se lanza una sola vez (o periodicamente, en un Job de
+# Kubernetes / un cron) para producir el modelo. Se aisla de la imagen de
+# inferencia porque las dependencias de entrenamiento (Optuna, MLflow,
+# matplotlib, etc.) son pesadas y no son necesarias en runtime.
+# =============================================================================
+FROM python:3.11-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Dependencias del sistema necesarias para LightGBM + lectura de CSV grandes.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential libgomp1 curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Instalamos primero las dependencias para aprovechar la cache de Docker.
+COPY requirements/train.txt /app/requirements/train.txt
+RUN pip install --upgrade pip \
+    && pip install -r /app/requirements/train.txt
+
+# Copiamos el codigo fuente. La carpeta data y models se montaran como
+# volumenes para que el modelo entrenado quede disponible al servicio
+# de inferencia.
+COPY src /app/src
+COPY scripts /app/scripts
+
+ENV CARDIS_DATA_DIR=/app/data \
+    CARDIS_MODEL_DIR=/app/models \
+    CARDIS_RAW_TRAIN=/app/data/raw/cardis_train.csv \
+    CARDIS_LOG_LEVEL=INFO
+
+# Punto de entrada: ejecuta el pipeline completo. 
+ENTRYPOINT ["python", "-m", "src.train"]
+CMD []
