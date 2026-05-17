@@ -1,0 +1,113 @@
+# =============================================================================
+# Alertmanager — Stack de observabilidad CARDIS (Hito 5, Bloque 3)
+# -----------------------------------------------------------------------------
+# Configuración mínima con receiver 'null'. Sin reglas ni canales de alerta:
+# Diego añade reglas Telegram en el Bloque 5.
+# Recursos: ConfigMap + Deployment + Service (ClusterIP :9093)
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# ConfigMap con alertmanager.yml (mínimo funcional, receiver null)
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cardis-alertmanager-config
+  namespace: cardis
+  labels:
+    app: cardis-alertmanager
+    component: monitoring
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+
+    route:
+      receiver: 'null'
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+
+    receivers:
+      - name: 'null'
+---
+# ---------------------------------------------------------------------------
+# Deployment
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cardis-alertmanager
+  namespace: cardis
+  labels:
+    app: cardis-alertmanager
+    component: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cardis-alertmanager
+  template:
+    metadata:
+      labels:
+        app: cardis-alertmanager
+        component: monitoring
+    spec:
+      containers:
+        - name: alertmanager
+          image: prom/alertmanager:v0.27.0
+          args:
+            - --config.file=/etc/alertmanager/alertmanager.yml
+            - --storage.path=/alertmanager
+          ports:
+            - containerPort: 9093
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alertmanager
+            - name: data
+              mountPath: /alertmanager
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9093
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9093
+            initialDelaySeconds: 20
+            periodSeconds: 30
+      volumes:
+        - name: config
+          configMap:
+            name: cardis-alertmanager-config
+        - name: data
+          emptyDir: {}
+---
+# ---------------------------------------------------------------------------
+# Service
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: cardis-alertmanager
+  namespace: cardis
+  labels:
+    app: cardis-alertmanager
+    component: monitoring
+spec:
+  selector:
+    app: cardis-alertmanager
+  ports:
+    - name: http
+      port: 9093
+      targetPort: 9093
+  type: ClusterIP

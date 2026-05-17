@@ -11,6 +11,12 @@ resources:
   - train-job.yaml
   - inferer-deployment.yaml
   - ingress.yaml
+  # Bloque 3 — Stack de observabilidad
+  - prometheus.yaml
+  - alertmanager.yaml
+  - grafana.yaml
+  - grafana-provisioning.yaml
+  - grafana-dashboards.yaml
 
 images:
   - name: cardis/trainer

@@ -1,0 +1,249 @@
+# =============================================================================
+# Prometheus — Stack de observabilidad CARDIS (Hito 5, Bloque 3)
+# -----------------------------------------------------------------------------
+# Recursos:
+#   ServiceAccount + Role + RoleBinding  → pod discovery (namespace cardis)
+#   ClusterRole + ClusterRoleBinding     → kubelet/cAdvisor (CPU/RAM)
+#   ConfigMap cardis-prometheus-config   → prometheus.yml
+#   Deployment cardis-prometheus
+#   Service cardis-prometheus (ClusterIP :9090)
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# RBAC — pod discovery (namespace-scoped)
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cardis-prometheus
+  namespace: cardis
+  labels:
+    app: cardis-prometheus
+    component: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cardis-prometheus
+  namespace: cardis
+  labels:
+    app: cardis-prometheus
+    component: monitoring
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cardis-prometheus
+  namespace: cardis
+  labels:
+    app: cardis-prometheus
+    component: monitoring
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cardis-prometheus
+subjects:
+  - kind: ServiceAccount
+    name: cardis-prometheus
+    namespace: cardis
+---
+# ---------------------------------------------------------------------------
+# RBAC — kubelet/cAdvisor (cluster-scoped, necesario para CPU/RAM)
+# ---------------------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cardis-prometheus
+  labels:
+    app: cardis-prometheus
+    component: monitoring
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/proxy", "nodes/metrics"]
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics", "/metrics/cadvisor"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cardis-prometheus
+  labels:
+    app: cardis-prometheus
+    component: monitoring
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cardis-prometheus
+subjects:
+  - kind: ServiceAccount
+    name: cardis-prometheus
+    namespace: cardis
+---
+# ---------------------------------------------------------------------------
+# ConfigMap con prometheus.yml
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cardis-prometheus-config
+  namespace: cardis
+  labels:
+    app: cardis-prometheus
+    component: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets:
+                - cardis-alertmanager.cardis.svc.cluster.local:9093
+
+    scrape_configs:
+
+      # Prometheus propio
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      # Pods con annotation prometheus.io/scrape: "true" en namespace cardis
+      # Descubre los pods del inferer (y cualquier futuro servicio anotado).
+      - job_name: 'cardis-pods'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ['cardis']
+        relabel_configs:
+          # Filtrar solo pods con scrape habilitado
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: "true"
+          # Override de metrics path desde annotation (default /metrics)
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          # Override del puerto desde annotation
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: '([^:]+)(?::\d+)?;(\d+)'
+            replacement: '$1:$2'
+            target_label: __address__
+          # Labels de identificación
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: app
+
+      # Kubelet cAdvisor — métricas de CPU y RAM de los pods
+      - job_name: 'kubernetes-nodes-cadvisor'
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/$1/proxy/metrics/cadvisor
+---
+# ---------------------------------------------------------------------------
+# Deployment
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cardis-prometheus
+  namespace: cardis
+  labels:
+    app: cardis-prometheus
+    component: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cardis-prometheus
+  template:
+    metadata:
+      labels:
+        app: cardis-prometheus
+        component: monitoring
+    spec:
+      serviceAccountName: cardis-prometheus
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.53.3
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time=7d
+            - --web.enable-lifecycle
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: data
+              mountPath: /prometheus
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9090
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: config
+          configMap:
+            name: cardis-prometheus-config
+        - name: data
+          emptyDir: {}
+---
+# ---------------------------------------------------------------------------
+# Service
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: cardis-prometheus
+  namespace: cardis
+  labels:
+    app: cardis-prometheus
+    component: monitoring
+spec:
+  selector:
+    app: cardis-prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
+  type: ClusterIP
