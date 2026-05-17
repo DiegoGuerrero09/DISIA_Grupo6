@@ -9,6 +9,7 @@ servido sin modificar a los clientes (la interfaz clinica de CARDIS).
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
@@ -85,6 +86,14 @@ class PredictResult(BaseModel):
 
 
 class PredictResponse(BaseModel):
+    request_id: str = Field(
+        default_factory=lambda: str(uuid4()),
+        description=(
+            "UUID4 de la petición, generado por el servidor. "
+            "Permite trazar la inferencia en logs, métricas y "
+            "dataset de inferencias (Hito 5)."
+        ),
+    )
     model_name: str = "cardis-lightgbm"
     model_version: str = "1.0.0"
     threshold: float

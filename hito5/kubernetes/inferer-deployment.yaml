@@ -25,6 +25,8 @@ spec:
         prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
     spec:
+      securityContext:
+        fsGroup: 1000
       containers:
         - name: inferer
           image: cardis/inferer:1.0.0
@@ -55,6 +57,12 @@ spec:
               port: 8080
             initialDelaySeconds: 30
             periodSeconds: 30
+          volumeMounts:
+            - name: prometheus-multiproc
+              mountPath: /tmp/prom
+      volumes:
+        - name: prometheus-multiproc
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

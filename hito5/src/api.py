@@ -24,10 +24,21 @@ import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
+    Counter,
+    Gauge,
+    Histogram,
+    MultiProcessCollector,
+    generate_latest,
+)
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from .config import Paths, setup_logging
 from .infer import CardisInferenceService
@@ -43,8 +54,72 @@ from .schemas import (
 
 logger = setup_logging()
 SERVICE: CardisInferenceService | None = None
-START_TIME: float = time.time()
-REQUEST_COUNTER: dict[str, int] = {"total": 0, "errors": 0}
+
+# ---------------------------------------------------------------------------
+# Métricas Prometheus (8 métricas del Bloque 1)
+# ---------------------------------------------------------------------------
+_HTTP_REQUESTS = Counter(
+    "cardis_http_requests_total",
+    "Número de peticiones HTTP atendidas",
+    ["endpoint", "method", "status_code"],
+)
+_HTTP_LATENCY = Histogram(
+    "cardis_http_request_duration_seconds",
+    "Duración de peticiones HTTP en segundos",
+    ["endpoint"],
+)
+_INFER_LATENCY = Histogram(
+    "cardis_inference_duration_seconds",
+    "Duración de la inferencia del modelo en segundos",
+)
+_IN_FLIGHT = Gauge(
+    "cardis_in_flight_requests",
+    "Peticiones HTTP actualmente en vuelo",
+    multiprocess_mode="livesum",
+)
+_PREDICTIONS = Counter(
+    "cardis_predictions_total",
+    "Número de predicciones emitidas por etiqueta",
+    ["label_predicho"],
+)
+_PRED_PROBA = Histogram(
+    "cardis_prediction_probability",
+    "Distribución de probabilidades de riesgo predichas",
+    buckets=(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0),
+)
+_AGE_WARNINGS = Counter(
+    "cardis_age_warnings_total",
+    "Número de avisos de edad joven emitidos",
+)
+_MODEL_INFO = Gauge(
+    "cardis_model_info",
+    "Información del modelo cargado (siempre 1)",
+    ["version"],
+)
+
+
+class _MetricsMiddleware(BaseHTTPMiddleware):
+    """Middleware ASGI para métricas operativas de HTTP."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        endpoint = request.url.path
+        method = request.method
+        _IN_FLIGHT.inc()
+        start = time.perf_counter()
+        try:
+            response: Response = await call_next(request)
+            status = str(response.status_code)
+        except Exception:
+            status = "500"
+            raise
+        finally:
+            elapsed = time.perf_counter() - start
+            _IN_FLIGHT.dec()
+            _HTTP_REQUESTS.labels(
+                endpoint=endpoint, method=method, status_code=status
+            ).inc()
+            _HTTP_LATENCY.labels(endpoint=endpoint).observe(elapsed)
+        return response
 
 
 @asynccontextmanager
@@ -61,6 +136,8 @@ async def lifespan(app: FastAPI):
     )
     try:
         SERVICE.load()
+        version = SERVICE.metadata.get("model_version", "1.0.0")
+        _MODEL_INFO.labels(version=version).set(1)
         logger.info("API CARDIS lista para servir")
     except Exception as exc:  # noqa: BLE001
         logger.exception("Error al cargar el modelo: %s", exc)
@@ -88,6 +165,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(_MetricsMiddleware)
 
 
 def _service() -> CardisInferenceService:
@@ -133,7 +211,6 @@ async def get_metadata(model_name: str) -> ModelMetadata:
 @app.post("/v2/models/{model_name}/infer", response_model=InferenceResponse)
 async def infer_oip(model_name: str, request: InferenceRequest) -> InferenceResponse:
     service = _service()
-    REQUEST_COUNTER["total"] += 1
     try:
         if model_name not in {"cardis-lightgbm", "cardis"}:
             raise HTTPException(status_code=404, detail="Modelo desconocido")
@@ -167,10 +244,8 @@ async def infer_oip(model_name: str, request: InferenceRequest) -> InferenceResp
             outputs=outputs,
         )
     except HTTPException:
-        REQUEST_COUNTER["errors"] += 1
         raise
     except Exception as exc:  # noqa: BLE001
-        REQUEST_COUNTER["errors"] += 1
         logger.exception("Error en /v2/infer: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -181,11 +256,19 @@ async def infer_oip(model_name: str, request: InferenceRequest) -> InferenceResp
 @app.post("/predict", response_model=PredictResponse)
 async def predict(request: PredictRequest) -> PredictResponse:
     service = _service()
-    REQUEST_COUNTER["total"] += 1
+    request_id = str(uuid4())
     try:
-        return service.predict(request.patients)
+        start = time.perf_counter()
+        response = service.predict(request.patients)
+        _INFER_LATENCY.observe(time.perf_counter() - start)
+        for pred in response.predictions:
+            _PREDICTIONS.labels(label_predicho=str(pred.label)).inc()
+            _PRED_PROBA.observe(pred.probability)
+            if pred.age_warning:
+                _AGE_WARNINGS.inc()
+        response.request_id = request_id
+        return response
     except Exception as exc:  # noqa: BLE001
-        REQUEST_COUNTER["errors"] += 1
         logger.exception("Error en /predict: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -193,20 +276,13 @@ async def predict(request: PredictRequest) -> PredictResponse:
 # -----------------------------------------------------------------------------
 # Metrics (Prometheus, formato texto)
 # -----------------------------------------------------------------------------
-@app.get("/metrics", response_class=PlainTextResponse)
-async def metrics() -> str:
-    uptime = time.time() - START_TIME
-    return (
-        f"# HELP cardis_uptime_seconds Tiempo desde el arranque del servicio\n"
-        f"# TYPE cardis_uptime_seconds counter\n"
-        f"cardis_uptime_seconds {uptime:.2f}\n"
-        f"# HELP cardis_requests_total Numero total de peticiones servidas\n"
-        f"# TYPE cardis_requests_total counter\n"
-        f"cardis_requests_total {REQUEST_COUNTER['total']}\n"
-        f"# HELP cardis_request_errors_total Numero de errores devueltos\n"
-        f"# TYPE cardis_request_errors_total counter\n"
-        f"cardis_request_errors_total {REQUEST_COUNTER['errors']}\n"
-    )
+@app.get("/metrics")
+async def metrics() -> PlainTextResponse:
+    """Expone métricas Prometheus en formato texto (modo multiprocess)."""
+    registry = CollectorRegistry()
+    MultiProcessCollector(registry)
+    data = generate_latest(registry)
+    return PlainTextResponse(content=data.decode("utf-8"), media_type=CONTENT_TYPE_LATEST)
 
 
 # -----------------------------------------------------------------------------

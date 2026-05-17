@@ -26,13 +26,15 @@ RUN pip install --upgrade pip \
 COPY src /app/src
 
 RUN useradd --create-home --shell /usr/sbin/nologin cardis \
-    && mkdir -p /app/models /app/data \
-    && chown -R cardis:cardis /app
+    && mkdir -p /app/models /app/data /tmp/prom \
+    && chown -R cardis:cardis /app \
+    && chown cardis:cardis /tmp/prom
 USER cardis
 
 ENV CARDIS_MODEL_DIR=/app/models \
     CARDIS_DATA_DIR=/app/data \
-    CARDIS_LOG_LEVEL=INFO
+    CARDIS_LOG_LEVEL=INFO \
+    PROMETHEUS_MULTIPROC_DIR=/tmp/prom
 
 EXPOSE 8080
 

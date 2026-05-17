@@ -14,6 +14,16 @@ from pathlib import Path
 from typing import Optional
 
 
+# Directorio compartido para métricas en modo multiprocess de prometheus_client.
+# Debe existir antes de que se importe prometheus_client (la librería lo lee
+# al importarse, no al usarse). setdefault para que un valor externo (Docker ENV,
+# K8s, etc.) tenga prioridad. Hito 5 — Bloque 1.
+PROMETHEUS_MULTIPROC_DIR = os.environ.setdefault(
+    "PROMETHEUS_MULTIPROC_DIR", "/tmp/prom"
+)
+Path(PROMETHEUS_MULTIPROC_DIR).mkdir(parents=True, exist_ok=True)
+
+
 # -----------------------------------------------------------------------------
 # Logging
 # -----------------------------------------------------------------------------
