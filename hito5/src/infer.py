@@ -89,13 +89,21 @@ class CardisInferenceService:
         proba = self.calibrator.predict_proba(feats)[:, 1]
         return proba
 
-    def predict(self, patients: Iterable[PatientRecord]) -> PredictResponse:
+    def predict_with_features(
+        self, patients: Iterable[PatientRecord]
+    ) -> tuple[PredictResponse, pd.DataFrame]:
+        """Predicción exponiendo el DataFrame post-featurización.
+
+        Devuelve la respuesta estándar y el DataFrame transformado por
+        FeatureBuilder para que el InferenceLogger pueda persistirlo.
+        """
         self._ensure_loaded()
         records: List[dict] = [p.model_dump() for p in patients]
-        df = pd.DataFrame.from_records(records)
-        proba = self.predict_dataframe(df)
+        raw_df = pd.DataFrame.from_records(records)
+        feat_df: pd.DataFrame = self.builder.transform(raw_df)  # type: ignore[union-attr]
+        proba = self.calibrator.predict_proba(feat_df)[:, 1]  # type: ignore[union-attr]
         results: List[PredictResult] = []
-        for prob, age in zip(proba, df.get("edad", pd.Series(dtype=float))):
+        for prob, age in zip(proba, raw_df.get("edad", pd.Series(dtype=float))):
             label = int(prob >= self.threshold)
             results.append(
                 PredictResult(
@@ -105,11 +113,17 @@ class CardisInferenceService:
                     age_warning=bool(age is not None and age < YOUNG_AGE_THRESHOLD),
                 )
             )
-        return PredictResponse(
+        response = PredictResponse(
             model_version=str(self.metadata.get("model_version", "1.0.0")),
             threshold=self.threshold,
             predictions=results,
         )
+        return response, feat_df
+
+    def predict(self, patients: Iterable[PatientRecord]) -> PredictResponse:
+        """Compatibilidad: llama a predict_with_features y descarta el DataFrame."""
+        response, _ = self.predict_with_features(patients)
+        return response
 
 
 # -----------------------------------------------------------------------------

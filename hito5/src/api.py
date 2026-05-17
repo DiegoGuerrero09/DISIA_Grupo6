@@ -23,13 +23,14 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
 # config DEBE importarse antes que prometheus_client: su side-effect
 # (os.environ.setdefault de PROMETHEUS_MULTIPROC_DIR) debe ejecutarse
 # antes de que prometheus_client detecte el modo de operación.
-from .config import Paths, setup_logging  # noqa: E402
+from .config import Paths, StorageConfig, setup_logging  # noqa: E402
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,6 +47,7 @@ from prometheus_client.multiprocess import MultiProcessCollector
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .infer import CardisInferenceService
+from .inference_logger import InferenceLogger, InferenceRecord
 from .schemas import (
     HealthResponse,
     InferenceRequest,
@@ -58,6 +60,7 @@ from .schemas import (
 
 logger = setup_logging()
 SERVICE: CardisInferenceService | None = None
+INFERENCE_LOGGER: InferenceLogger | None = None
 
 # ---------------------------------------------------------------------------
 # Métricas Prometheus (8 métricas del Bloque 1)
@@ -129,7 +132,7 @@ class _MetricsMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Carga el modelo una sola vez al arrancar el contenedor."""
-    global SERVICE
+    global SERVICE, INFERENCE_LOGGER
     paths = Paths()
     builder_path = paths.model_dir / "cardis_featurebuilder.joblib"
     SERVICE = CardisInferenceService(
@@ -142,10 +145,21 @@ async def lifespan(app: FastAPI):
         SERVICE.load()
         version = SERVICE.metadata.get("model_version", "1.0.0")
         _MODEL_INFO.labels(version=version).set(1)
+        storage = StorageConfig()
+        INFERENCE_LOGGER = InferenceLogger(
+            bucket=os.getenv("CARDIS_INFERENCES_BUCKET", "cardis-inferences"),
+            endpoint=storage.endpoint,
+            access_key=storage.access_key,
+            secret_key=storage.secret_key,
+            secure=storage.secure,
+        )
+        await INFERENCE_LOGGER.start_background_task()
         logger.info("API CARDIS lista para servir")
     except Exception as exc:  # noqa: BLE001
         logger.exception("Error al cargar el modelo: %s", exc)
     yield
+    if INFERENCE_LOGGER is not None:
+        await INFERENCE_LOGGER.stop()
     logger.info("Apagando API CARDIS")
 
 
@@ -263,7 +277,7 @@ async def predict(request: PredictRequest) -> PredictResponse:
     request_id = str(uuid4())
     try:
         start = time.perf_counter()
-        response = service.predict(request.patients)
+        response, feat_df = service.predict_with_features(request.patients)
         _INFER_LATENCY.observe(time.perf_counter() - start)
         for pred in response.predictions:
             _PREDICTIONS.labels(label_predicho=str(pred.label)).inc()
@@ -271,6 +285,30 @@ async def predict(request: PredictRequest) -> PredictResponse:
             if pred.age_warning:
                 _AGE_WARNINGS.inc()
         response.request_id = request_id
+        if INFERENCE_LOGGER is not None:
+            try:
+                ts = datetime.now(timezone.utc).isoformat()
+                model_version = response.model_version
+                pid = os.getpid()
+                for idx, (pred, (_, feat_row)) in enumerate(
+                    zip(response.predictions, feat_df.iterrows())
+                ):
+                    record: InferenceRecord = {
+                        "timestamp": ts,
+                        "model_version": model_version,
+                        "request_id": request_id,
+                        "worker_pid": pid,
+                        "patient_index": idx,
+                        **feat_row.to_dict(),
+                        "probability": pred.probability,
+                        "label": pred.label,
+                        "age_warning": pred.age_warning,
+                    }
+                    INFERENCE_LOGGER.log(record)
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "InferenceLogger: error al construir registro, omitiendo"
+                )
         return response
     except Exception as exc:  # noqa: BLE001
         logger.exception("Error en /predict: %s", exc)

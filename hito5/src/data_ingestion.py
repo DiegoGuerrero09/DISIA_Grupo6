@@ -60,6 +60,42 @@ def ingest(input_path: Path, output_path: Path) -> Path:
     return save_parquet(df, output_path)
 
 
+def load_from_minio(bucket: str, key: str) -> pd.DataFrame:
+    """Descarga un CSV desde MinIO y lo devuelve como DataFrame.
+
+    Parámetros
+    ----------
+    bucket : str
+        Nombre del bucket MinIO.
+    key : str
+        Clave (ruta) del objeto dentro del bucket.
+
+    Notas
+    -----
+    Función preparada para el Bloque 6 (Decisión 4 del Hito 5).
+    No se invoca desde ningún módulo todavía.
+    """
+    import io
+
+    from minio import Minio
+
+    from .config import StorageConfig
+
+    sc = StorageConfig()
+    client = Minio(
+        sc.endpoint,
+        access_key=sc.access_key,
+        secret_key=sc.secret_key,
+        secure=sc.secure,
+    )
+    obj = client.get_object(bucket, key)
+    try:
+        return pd.read_csv(io.BytesIO(obj.read()))
+    finally:
+        obj.close()
+        obj.release_conn()
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Ingestion de datos del sistema CARDIS"
