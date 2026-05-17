@@ -26,6 +26,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
 
+# config DEBE importarse antes que prometheus_client: su side-effect
+# (os.environ.setdefault de PROMETHEUS_MULTIPROC_DIR) debe ejecutarse
+# antes de que prometheus_client detecte el modo de operación.
+from .config import Paths, setup_logging  # noqa: E402
+
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -35,12 +40,11 @@ from prometheus_client import (
     Counter,
     Gauge,
     Histogram,
-    MultiProcessCollector,
     generate_latest,
 )
+from prometheus_client.multiprocess import MultiProcessCollector
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from .config import Paths, setup_logging
 from .infer import CardisInferenceService
 from .schemas import (
     HealthResponse,
