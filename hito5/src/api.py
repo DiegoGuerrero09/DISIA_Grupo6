@@ -27,6 +27,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+import requests
+
 # config DEBE importarse antes que prometheus_client: su side-effect
 # (os.environ.setdefault de PROMETHEUS_MULTIPROC_DIR) debe ejecutarse
 # antes de que prometheus_client detecte el modo de operación.
@@ -102,6 +104,11 @@ _MODEL_INFO = Gauge(
     "cardis_model_info",
     "Información del modelo cargado (siempre 1)",
     ["version"],
+)
+_SHADOW_AGREEMENT = Gauge(
+    "cardis_shadow_agreement", 
+    "Porcentaje de coincidencia entre modelo oficial y shadow",
+    ["model_version_shadow"]
 )
 
 
@@ -279,6 +286,25 @@ async def predict(request: PredictRequest) -> PredictResponse:
         start = time.perf_counter()
         response, feat_df = service.predict_with_features(request.patients)
         _INFER_LATENCY.observe(time.perf_counter() - start)
+
+        SHADOW_URL = "http://cardis-inferer-shadow.cardis.svc.cluster.local/predict"
+
+        try:
+            shadow_res = requests.post(SHADOW_URL, json=request.dict(), timeout=0.2)
+            
+            if shadow_res.status_code == 200:
+                shadow_data = shadow_res.json()
+
+                main_labels = [p.label for p in response.predictions]
+                shadow_labels = [p['label'] for p in shadow_data['predictions']]
+
+                matches = sum(1 for m, s in zip(main_labels, shadow_labels) if m == s)
+                agreement = matches / len(main_labels)
+
+                _SHADOW_AGREEMENT.labels(model_version_shadow="1.1.0-retrained").set(agreement)
+        except Exception:
+            pass
+
         for pred in response.predictions:
             _PREDICTIONS.labels(label_predicho=str(pred.label)).inc()
             _PRED_PROBA.observe(pred.probability)

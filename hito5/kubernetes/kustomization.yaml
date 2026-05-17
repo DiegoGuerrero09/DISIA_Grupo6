@@ -21,6 +21,7 @@ resources:
   - drift-monitor.yaml
   # Bloque 5 — Feedback Loop
   - retrain-webhook.yaml
+  - inferer-shadow.yaml
 
 images:
   - name: cardis/trainer
