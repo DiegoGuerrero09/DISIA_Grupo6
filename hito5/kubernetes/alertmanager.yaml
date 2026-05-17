@@ -1,13 +1,11 @@
 # =============================================================================
 # Alertmanager — Stack de observabilidad CARDIS (Hito 5, Bloque 3)
 # -----------------------------------------------------------------------------
-# Configuración mínima con receiver 'null'. Sin reglas ni canales de alerta:
-# Diego añade reglas Telegram en el Bloque 5.
 # Recursos: ConfigMap + Deployment + Service (ClusterIP :9093)
 # =============================================================================
 
 # ---------------------------------------------------------------------------
-# ConfigMap con alertmanager.yml (mínimo funcional, receiver null)
+# ConfigMap con alertmanager.yml
 # ---------------------------------------------------------------------------
 apiVersion: v1
 kind: ConfigMap
@@ -23,13 +21,44 @@ data:
       resolve_timeout: 5m
 
     route:
-      receiver: 'null'
+      group_by: ['alertname', 'severity']
       group_wait: 30s
-      group_interval: 5m
-      repeat_interval: 4h
+      group_interval: 2m
+      repeat_interval: 2h
+      receiver: 'telegram-only'
+
+      routes:
+        - match_re:
+            alertname: '.*Drift.*'
+          receiver: 'retrain-and-telegram'
+        - match:
+            severity: 'critical'
+          receiver: 'telegram-only'
 
     receivers:
-      - name: 'null'
+      - name: 'telegram-only'
+        telegram_configs:
+          - bot_token: '8850747301:AAF24kU_UXTdUDJ1Vvavji8bAIqZjX9y8ss'
+            chat_id: 471926301
+            send_resolved: true
+            parse_mode: 'HTML'
+            message: |
+              <b>🚨 Alerta CARDIS: {{ .Status | toUpper }}</b>
+              {{ range .Alerts }}
+              📌 <b>{{ .Labels.alertname }}</b>
+              Severidad: <code>{{ .Labels.severity }}</code>
+              Detalle: {{ .Annotations.description }}
+              {{ end }}
+
+      - name: 'retrain-and-telegram'
+        telegram_configs:
+          - bot_token: '8850747301:AAF24kU_UXTdUDJ1Vvavji8bAIqZjX9y8ss'
+            chat_id: 471926301
+            parse_mode: 'HTML'
+            message: "<b>Drift Crítico:</b> Se ha enviado orden de reentrenamiento al webhook de CARDIS."
+        webhook_configs:
+          - url: 'http://cardis-retrain-webhook.cardis.svc.cluster.local:8080/alerts'
+            send_resolved: false
 ---
 # ---------------------------------------------------------------------------
 # Deployment

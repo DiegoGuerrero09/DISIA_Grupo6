@@ -19,6 +19,8 @@ resources:
   - grafana-dashboards.yaml
   # Bloque 4 — Detección de deriva
   - drift-monitor.yaml
+  # Bloque 5 — Feedback Loop
+  - retrain-webhook.yaml
 
 images:
   - name: cardis/trainer
@@ -28,4 +30,6 @@ images:
   - name: cardis/mlflow
     newTag: 1.0.0
   - name: cardis/drift-monitor
+    newTag: 1.0.0
+  - name: cardis/retrain-webhook
     newTag: 1.0.0

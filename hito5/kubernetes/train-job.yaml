@@ -34,7 +34,7 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /app/data
-              readOnly: true
+              readOnly: false
       volumes:
         - name: data
           persistentVolumeClaim:

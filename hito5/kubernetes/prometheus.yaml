@@ -96,10 +96,58 @@ metadata:
     app: cardis-prometheus
     component: monitoring
 data:
+  alert_rules.yml: |
+    groups:
+      - name: cardis_alerts
+        rules:
+          # 1. Alerta de Drift
+          - alert: CardisDataDrift
+            expr: cardis_drift_score > 0.35
+            for: 2m
+            labels:
+              severity: critical
+              action: retrain
+            annotations:
+              summary: "Drift detectado en CARDIS"
+              description: "El score de drift ({{ $value }}) ha superado el umbral. Iniciando bucle de reentreno."
+
+          # 2. Alerta de Error Rate
+          - alert: HighErrorRate
+            expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.1
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Alta tasa de errores en Inferer"
+              description: "El inferer está devolviendo más de un 10% de errores 5xx."
+
+          # 3. Alerta de Latencia
+          - alert: HighLatency
+            expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 0.5
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Latencia P99 elevada"
+              description: "El 99% de las predicciones tardan más de 500ms."
+
+          # 4. Alerta de Pod Caído
+          - alert: InfererPodDown
+            expr: up{app="cardis-inferer"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Instancia del Inferer caída"
+              description: "Un pod de inferencia no responde al scraping de Prometheus."
+
   prometheus.yml: |
     global:
       scrape_interval: 15s
       evaluation_interval: 15s
+
+    rule_files:
+      - /etc/prometheus/alert_rules.yml
 
     alerting:
       alertmanagers:
