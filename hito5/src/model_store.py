@@ -13,6 +13,7 @@ El backend se selecciona mediante la variable ``CARDIS_STORAGE_BACKEND``.
 
 from __future__ import annotations
 
+import fcntl
 import io
 import shutil
 from pathlib import Path
@@ -71,7 +72,12 @@ class ModelStore:
         return str(target)
 
     def get(self, remote_name: str, local_path: Path) -> Path:
-        """Descarga ``remote_name`` al ``local_path`` indicado."""
+        """Descarga ``remote_name`` al ``local_path`` indicado.
+
+        Usa un fichero lock por proceso para evitar la race condition cuando
+        uvicorn arranca con ``--workers > 1`` y varios workers intentan
+        descargar el mismo artefacto simultáneamente.
+        """
         # Resolver a ruta absoluta para que fget_object (minio-py) coloque el
         # fichero temporal en el directorio correcto independientemente del CWD
         # del proceso (importante con --workers > 1 en uvicorn).
@@ -82,12 +88,20 @@ class ModelStore:
         local_path.parent.mkdir(parents=True, exist_ok=True)
         if self.config.backend == "minio":
             assert self._client is not None
-            self._client.fget_object(
-                self.config.bucket, remote_name, str(local_path)
-            )
-            logger.info(
-                "Descargado %s desde MinIO a %s", remote_name, local_path
-            )
+            lock_path = local_path.with_suffix(local_path.suffix + ".lock")
+            with lock_path.open("w") as _lock:
+                fcntl.flock(_lock, fcntl.LOCK_EX)
+                if not local_path.exists():
+                    self._client.fget_object(
+                        self.config.bucket, remote_name, str(local_path)
+                    )
+                    logger.info(
+                        "Descargado %s desde MinIO a %s", remote_name, local_path
+                    )
+                else:
+                    logger.info(
+                        "Artefacto %s descargado por otro worker, reutilizando", remote_name
+                    )
             return local_path
         # local: si remote_name == local_path, no hay nada que hacer
         candidate = Path(remote_name)
