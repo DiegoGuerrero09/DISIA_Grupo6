@@ -1,0 +1,44 @@
+# =============================================================================
+# Imagen del DRIFT MONITOR de CARDIS
+# -----------------------------------------------------------------------------
+# Servicio FastAPI de proceso único que detecta covariate shift con Evidently
+# comparando el dataset de referencia con las inferencias acumuladas en MinIO.
+# Expone /metrics (Prometheus), /v2/health/live y /v2/health/ready.
+#
+# Nota sobre prometheus_client:
+# Este contenedor NO usa PROMETHEUS_MULTIPROC_DIR porque corre con un único
+# worker de uvicorn. La variable no se setea en el ENV para que prometheus_client
+# inicialice en modo single-process (orden de imports inverso al de api.py).
+# =============================================================================
+FROM python:3.11-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements/drift.txt /app/requirements/drift.txt
+RUN pip install --upgrade pip \
+    && pip install -r /app/requirements/drift.txt
+
+COPY src /app/src
+
+RUN useradd --create-home --shell /usr/sbin/nologin cardis \
+    && chown -R cardis:cardis /app
+USER cardis
+
+ENV CARDIS_LOG_LEVEL=INFO \
+    CARDIS_STORAGE_BACKEND=minio
+
+EXPOSE 8090
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+    CMD curl --fail http://localhost:8090/v2/health/live || exit 1
+
+CMD ["uvicorn", "src.evidently_monitor:app", "--host", "0.0.0.0", "--port", "8090"]

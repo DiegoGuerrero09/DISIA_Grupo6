@@ -52,3 +52,14 @@ k8s-delete: ## Elimina los recursos del cluster
 
 smoke: ## Test end-to-end de validacion
 	bash scripts/smoke_test.sh
+
+reference: ## Genera reference.parquet y lo sube a MinIO
+	$(PYTHON) scripts/generate_reference_dataset.py
+
+docker-build-drift: ## Construye la imagen del drift monitor
+	docker build -f docker/Dockerfile.drift -t cardis/drift-monitor:1.0.0 .
+
+kind-load-drift: ## Carga la imagen del drift monitor en el cluster kind
+	kind load docker-image cardis/drift-monitor:1.0.0 --name cardis
+
+k8s-drift: docker-build-drift kind-load-drift k8s-apply ## Build + load + deploy del drift monitor

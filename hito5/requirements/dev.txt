@@ -1,6 +1,7 @@
 # Dependencias adicionales para desarrollo y tests.
 -r train.txt
 -r infer.txt
+-r drift.txt
 
 pytest==8.3.3
 pytest-cov==5.0.0
