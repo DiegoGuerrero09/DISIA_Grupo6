@@ -1,0 +1,54 @@
+# =============================================================================
+# Shadow Inferer
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cardis-inferer-shadow
+  namespace: cardis
+  labels:
+    app: cardis-inferer
+    version: shadow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cardis-inferer
+      version: shadow
+  template:
+    metadata:
+      labels:
+        app: cardis-inferer
+        version: shadow
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "80"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: inferer
+          image: cardis/inferer:1.0.0
+          env:
+            - name: MODEL_PATH
+              value: "/models/cardis-model-retrained.pkl"
+            - name: IS_SHADOW
+              value: "true"
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cardis-inferer-shadow
+  namespace: cardis
+spec:
+  selector:
+    app: cardis-inferer
+    version: shadow
+  ports:
+    - port: 80
+      targetPort: 80

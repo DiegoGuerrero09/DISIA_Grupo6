@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cardis-inferer
+  namespace: cardis
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:  
+    - hosts: [cardis.hospital.local]
+      secretName: cardis-tls
+  rules:
+    - host: cardis.hospital.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cardis-inferer
+                port:
+                  number: 80

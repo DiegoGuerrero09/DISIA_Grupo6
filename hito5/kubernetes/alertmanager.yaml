@@ -1,0 +1,142 @@
+# =============================================================================
+# Alertmanager — Stack de observabilidad CARDIS (Hito 5, Bloque 3)
+# -----------------------------------------------------------------------------
+# Recursos: ConfigMap + Deployment + Service (ClusterIP :9093)
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# ConfigMap con alertmanager.yml
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cardis-alertmanager-config
+  namespace: cardis
+  labels:
+    app: cardis-alertmanager
+    component: monitoring
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+
+    route:
+      group_by: ['alertname', 'severity']
+      group_wait: 30s
+      group_interval: 2m
+      repeat_interval: 2h
+      receiver: 'telegram-only'
+
+      routes:
+        - match_re:
+            alertname: '.*Drift.*'
+          receiver: 'retrain-and-telegram'
+        - match:
+            severity: 'critical'
+          receiver: 'telegram-only'
+
+    receivers:
+      - name: 'telegram-only'
+        telegram_configs:
+          - bot_token: '8850747301:AAF24kU_UXTdUDJ1Vvavji8bAIqZjX9y8ss'
+            chat_id: 471926301
+            send_resolved: true
+            parse_mode: 'HTML'
+            message: |
+              <b>🚨 Alerta CARDIS: {{ .Status | toUpper }}</b>
+              {{ range .Alerts }}
+              📌 <b>{{ .Labels.alertname }}</b>
+              Severidad: <code>{{ .Labels.severity }}</code>
+              Detalle: {{ .Annotations.description }}
+              {{ end }}
+
+      - name: 'retrain-and-telegram'
+        telegram_configs:
+          - bot_token: '8850747301:AAF24kU_UXTdUDJ1Vvavji8bAIqZjX9y8ss'
+            chat_id: 471926301
+            parse_mode: 'HTML'
+            message: "<b>Drift Crítico:</b> Se ha enviado orden de reentrenamiento al webhook de CARDIS."
+        webhook_configs:
+          - url: 'http://cardis-retrain-webhook.cardis.svc.cluster.local:8080/alerts'
+            send_resolved: false
+---
+# ---------------------------------------------------------------------------
+# Deployment
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cardis-alertmanager
+  namespace: cardis
+  labels:
+    app: cardis-alertmanager
+    component: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cardis-alertmanager
+  template:
+    metadata:
+      labels:
+        app: cardis-alertmanager
+        component: monitoring
+    spec:
+      containers:
+        - name: alertmanager
+          image: prom/alertmanager:v0.27.0
+          args:
+            - --config.file=/etc/alertmanager/alertmanager.yml
+            - --storage.path=/alertmanager
+          ports:
+            - containerPort: 9093
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alertmanager
+            - name: data
+              mountPath: /alertmanager
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9093
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9093
+            initialDelaySeconds: 20
+            periodSeconds: 30
+      volumes:
+        - name: config
+          configMap:
+            name: cardis-alertmanager-config
+        - name: data
+          emptyDir: {}
+---
+# ---------------------------------------------------------------------------
+# Service
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: cardis-alertmanager
+  namespace: cardis
+  labels:
+    app: cardis-alertmanager
+    component: monitoring
+spec:
+  selector:
+    app: cardis-alertmanager
+  ports:
+    - name: http
+      port: 9093
+      targetPort: 9093
+  type: ClusterIP

@@ -1,0 +1,13 @@
+# Dependencias minimas para el contenedor de INFERENCIA.
+numpy==1.26.4
+pandas==2.2.3
+scikit-learn==1.5.2
+lightgbm==4.5.0
+joblib==1.4.2
+pyarrow==17.0.0
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.2
+prometheus_client==0.21.1
+minio==7.2.9
+python-multipart==0.0.10

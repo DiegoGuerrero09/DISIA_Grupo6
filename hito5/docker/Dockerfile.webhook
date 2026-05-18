@@ -1,0 +1,34 @@
+# =============================================================================
+# Imagen del WEBHOOK de REENTRENO - CARDIS
+# -----------------------------------------------------------------------------
+# Esta imagen escucha las alertas de Prometheus/Alertmanager y gestiona
+# el ciclo de vida de los Jobs de entrenamiento y el Shadow Deployment.
+# =============================================================================
+FROM python:3.11-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Solo dependencias básicas del sistema
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Instalamos dependencias específicas del Webhook
+# Flask para el servidor, kubernetes para el SDK de K8s y requests para el API
+RUN pip install --upgrade pip \
+    && pip install flask kubernetes requests minio
+
+# Variables de entorno por defecto
+ENV CARDIS_LOG_LEVEL=INFO \
+    NAMESPACE=cardis
+
+# Punto de entrada.
+COPY hito5/src /app/src
+ENV PYTHONPATH=/app
+CMD ["python", "/app/src/webhook.py"]

@@ -1,0 +1,39 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: cardis
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - minio.yaml
+  - mlflow.yaml
+  - train-job.yaml
+  - inferer-deployment.yaml
+  - ingress.yaml
+  # Bloque 3 — Stack de observabilidad
+  - prometheus.yaml
+  - alertmanager.yaml
+  - grafana.yaml
+  - grafana-provisioning.yaml
+  - grafana-dashboards.yaml
+  # Bloque 4 — Detección de deriva
+  - drift-monitor.yaml
+  # Bloque 5 — Feedback Loop
+  - retrain-webhook.yaml
+  - inferer-shadow.yaml
+
+images:
+  - name: cardis/trainer
+    newTag: 1.0.0
+  - name: cardis/inferer
+    newTag: 1.0.0
+  - name: cardis/mlflow
+    newTag: 1.0.0
+  - name: cardis/drift-monitor
+    newTag: 1.0.0
+  - name: cardis/retrain-webhook
+    newTag: 1.0.0
+  - name: cardis/inferer-shadow 
+    newName: cardis/inferer 
+    newTag: 1.0.0
