@@ -345,6 +345,18 @@ async def predict(request: PredictRequest) -> PredictResponse:
                 logger.exception(
                     "InferenceLogger: error al construir registro, omitiendo"
                 )
+            INFERENCE_LOGGER.log({
+                "type": "prediction_event",
+                "request_id": request_id,
+                "timestamp": ts,
+                "predictions": [
+                    {
+                        "label": p.label,
+                        "probability": p.probability
+                    }
+                    for p in response.predictions
+                ]
+            })
         return response
     except Exception as exc:  # noqa: BLE001
         logger.exception("Error en /predict: %s", exc)

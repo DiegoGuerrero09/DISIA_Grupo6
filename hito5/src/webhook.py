@@ -23,38 +23,37 @@ def ensure_bucket(client, bucket_name: str):
 
 app = Flask(__name__)
 
-def create_training_job():
+def trigger_retrain_job():
     config.load_incluster_config()
-    batch = client.BatchV1Api()
 
-    namespace = os.getenv("NAMESPACE", "cardis")
-
-    job_name = f"cardis-train-{int(time.time())}"
+    batch_v1 = client.BatchV1Api()
 
     job = client.V1Job(
-        metadata=client.V1ObjectMeta(name=job_name),
+        metadata=client.V1ObjectMeta(
+            generate_name="cardis-train-"
+        ),
         spec=client.V1JobSpec(
+            backoff_limit=1,
             template=client.V1PodTemplateSpec(
                 spec=client.V1PodSpec(
                     restart_policy="Never",
                     containers=[
                         client.V1Container(
                             name="trainer",
-                            image=os.getenv("TRAIN_IMAGE", "cardis/train:1.0.0"),
+                            image="cardis/trainer:1.0.0",
                             env=[
-                                client.V1EnvVar(
-                                    name="LOAD_FROM_MINIO",
-                                    value="true"
-                                )
-                            ]
+                                client.V1EnvVar(name="LOAD_FROM_MINIO", value="true"),
+                                client.V1EnvVar(name="MINIO_BUCKET", value="cardis"),
+                                client.V1EnvVar(name="MINIO_KEY", value="cardis_train.csv"),
+                            ],
                         )
-                    ]
+                    ],
                 )
-            )
-        )
+            ),
+        ),
     )
 
-    batch.create_namespaced_job(namespace=namespace, body=job)
+    batch_v1.create_namespaced_job(namespace="cardis", body=job)
 
 @app.route("/alert", methods=["POST"])
 def alert():
@@ -62,7 +61,7 @@ def alert():
 
     if data.get("status") == "firing":
         try:
-            create_training_job()
+            trigger_retrain_job()
             return {"status": "training triggered"}, 200
         except Exception as e:
             return {"error": str(e)}, 500
@@ -75,6 +74,9 @@ def groundtruth():
 
     if not data:
         return {"error": "empty payload"}, 400
+    
+    if "request_id" not in data:
+        return {"error": "missing request_id"}, 400
 
     bucket = os.getenv("CARDIS_GROUNDTRUTH_BUCKET", "cardis-groundtruth")
 
@@ -82,7 +84,7 @@ def groundtruth():
         client = get_minio_client()
         ensure_bucket(client, bucket)
 
-        object_name = f"groundtruth-{int(time.time())}.json"
+        object_name = f"{data['request_id']}.json"
 
         payload = json.dumps(data).encode("utf-8")
 
@@ -95,6 +97,8 @@ def groundtruth():
         )
 
         print(f"Groundtruth guardado en MinIO: {object_name}")
+
+        trigger_retrain_job()
 
         return {"status": "stored", "object": object_name}, 200
 
