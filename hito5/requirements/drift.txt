@@ -1,0 +1,25 @@
+# Dependencias del servicio de detección de deriva (drift monitor).
+# Contenedor cardis/drift-monitor:1.0.0
+
+# ── Núcleo de datos ─────────────────────────────────────────────────────────
+numpy==1.26.4
+pandas==2.2.3
+pyarrow==17.0.0
+
+# ── Feature engineering (FeatureBuilder para whitelist de columnas) ──────────
+scikit-learn==1.5.2
+joblib==1.4.2
+
+# ── Evidently — detección de deriva ─────────────────────────────────────────
+# Pin a 0.4.36: último parche estable de la serie 0.4.x antes del breaking
+# change de API en 0.5.0. La estructura Report + DataDriftPreset + as_dict()
+# verificada manualmente en el Bloque 4 (ver hito5_notes.md).
+evidently==0.4.36
+
+# ── API y métricas ──────────────────────────────────────────────────────────
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+prometheus_client==0.21.1
+
+# ── Almacenamiento ─────────────────────────────────────────────────────────
+minio==7.2.9

@@ -1,0 +1,110 @@
+# Deployment con replicas multiples del servicio de inferencia.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cardis-inferer
+  namespace: cardis
+  labels:
+    app: cardis-inferer
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cardis-inferer
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: cardis-inferer
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: inferer
+          image: cardis/inferer:1.0.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - uvicorn
+            - src.api:app
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8080"
+            - --workers
+            - "1"
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: cardis-config
+            - secretRef:
+                name: cardis-secrets
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              path: /v2/health/ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /v2/health/live
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          volumeMounts:
+            - name: prometheus-multiproc
+              mountPath: /tmp/prom
+      volumes:
+        - name: prometheus-multiproc
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cardis-inferer
+  namespace: cardis
+  labels:
+    app: cardis-inferer
+spec:
+  selector:
+    app: cardis-inferer
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: cardis-inferer
+  namespace: cardis
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: cardis-inferer
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

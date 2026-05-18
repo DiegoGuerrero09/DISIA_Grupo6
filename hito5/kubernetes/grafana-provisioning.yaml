@@ -1,0 +1,52 @@
+# =============================================================================
+# Grafana Provisioning — datasource + dashboard provider (Hito 5, Bloque 3)
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Datasource: Prometheus interno del cluster
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cardis-grafana-datasources
+  namespace: cardis
+  labels:
+    app: cardis-grafana
+    component: monitoring
+data:
+  datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        uid: cardis-prometheus
+        url: http://cardis-prometheus.cardis.svc.cluster.local:9090
+        access: proxy
+        isDefault: true
+        jsonData:
+          timeInterval: "15s"
+          httpMethod: POST
+---
+# ---------------------------------------------------------------------------
+# Dashboard provider: apunta a /etc/grafana/dashboards (ConfigMap montado)
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cardis-grafana-dashboard-provider
+  namespace: cardis
+  labels:
+    app: cardis-grafana
+    component: monitoring
+data:
+  provider.yaml: |
+    apiVersion: 1
+    providers:
+      - name: cardis
+        orgId: 1
+        type: file
+        disableDeletion: true
+        updateIntervalSeconds: 60
+        allowUiUpdates: false
+        options:
+          path: /etc/grafana/dashboards

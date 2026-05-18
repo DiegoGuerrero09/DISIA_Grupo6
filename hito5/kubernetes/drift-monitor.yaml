@@ -1,0 +1,84 @@
+# Deployment y Service del servicio de detección de deriva (Hito 5 — B4).
+# Imagen: cardis/drift-monitor:1.0.0
+# Expone: /metrics (Prometheus), /v2/health/live, /v2/health/ready en puerto 8090
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cardis-drift-monitor
+  namespace: cardis
+  labels:
+    app: cardis-drift-monitor
+    component: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cardis-drift-monitor
+  template:
+    metadata:
+      labels:
+        app: cardis-drift-monitor
+        component: monitoring
+      annotations:
+        # Prometheus raspa el puerto 8090, path /metrics
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8090"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: drift-monitor
+          image: cardis/drift-monitor:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8090
+          envFrom:
+            - configMapRef:
+                name: cardis-config
+            - secretRef:
+                name: cardis-secrets
+          env:
+            # Buckets específicos del drift monitor
+            - name: CARDIS_DATA_BUCKET
+              value: "cardis-data"
+            - name: CARDIS_INFERENCES_BUCKET
+              value: "cardis-inferences"
+            # Ventana temporal en minutos (Decisión 3 — hito5_decisions.md)
+            - name: CARDIS_DRIFT_WINDOW_MIN
+              value: "5"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /v2/health/live
+              port: 8090
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /v2/health/ready
+              port: 8090
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 12
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cardis-drift-monitor
+  namespace: cardis
+  labels:
+    app: cardis-drift-monitor
+    component: monitoring
+spec:
+  selector:
+    app: cardis-drift-monitor
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8090
+  type: ClusterIP
