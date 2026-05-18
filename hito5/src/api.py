@@ -290,20 +290,30 @@ async def predict(request: PredictRequest) -> PredictResponse:
         SHADOW_URL = "http://cardis-inferer-shadow.cardis.svc.cluster.local/predict"
 
         try:
-            shadow_res = requests.post(SHADOW_URL, json=request.dict(), timeout=0.2)
-            
-            if shadow_res.status_code == 200:
-                shadow_data = shadow_res.json()
+            shadow_res = requests.post(
+                SHADOW_URL,
+                json=request.dict(),
+                timeout=0.2
+            )
+            shadow_res.raise_for_status()
+            shadow_data = shadow_res.json()
 
-                main_labels = [p.label for p in response.predictions]
-                shadow_labels = [p['label'] for p in shadow_data['predictions']]
+            main_labels = [p.label for p in response.predictions]
+            shadow_labels = [p["label"] for p in shadow_data.get("predictions", [])]
 
-                matches = sum(1 for m, s in zip(main_labels, shadow_labels) if m == s)
-                agreement = matches / len(main_labels)
+            if not main_labels or not shadow_labels:
+                agreement = 0.0
+            else:
+                matches = sum(
+                    1 for m, s in zip(main_labels, shadow_labels) if m == s
+                )
+                agreement = matches / min(len(main_labels), len(shadow_labels))
 
-                _SHADOW_AGREEMENT.labels(model_version_shadow="1.1.0-retrained").set(agreement)
-        except Exception:
-            pass
+            _SHADOW_AGREEMENT.labels(
+                model_version_shadow="1.1.0-retrained"
+            ).set(agreement)
+        except Exception as e:
+            logger.warning("Shadow comparison failed: %s", e)
 
         for pred in response.predictions:
             _PREDICTIONS.labels(label_predicho=str(pred.label)).inc()

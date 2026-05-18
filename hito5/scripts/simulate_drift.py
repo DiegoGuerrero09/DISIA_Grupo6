@@ -1,22 +1,22 @@
 import requests
 import time
 
-URL = "http://localhost:8000/predict"
+URL = "http://localhost:8080/predict"
 
 def send_drifted_data():
     payload = {
         "patients": [{
-            "edad": 65.0,
-            "altura_cm": 170.0,
-            "peso_kg": 98.0,
+            "edad": 120.0,
+            "altura_cm": 190.0,
+            "peso_kg": 28.0,
             "imc": 33.9,
             "presion_sistolica_1": 215.0,
             "presion_sistolica_2": 210.0,
             "presion_sistolica_3": 212.0,
-            "colesterol_total": 495.0,
+            "colesterol_total": 695.0,
             "ldl": 310.0,
             "hdl": 15.0,
-            "glucosa_ayunas": 140.0,
+            "glucosa_ayunas": 320.0,
             "fumador": 1,
             "antecedentes_familiares": 1,
             "hospital_origen": "General de Ciudad Real",

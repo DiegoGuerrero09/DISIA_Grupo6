@@ -2,7 +2,7 @@ import requests
 import time
 import random
 
-URL = "http://localhost:8000/predict" 
+URL = "http://localhost:8080/predict" 
 
 def send_request():
     payload = {
@@ -39,4 +39,3 @@ if __name__ == "__main__":
     print("Atacando endpoint /predict...")
     while True:
         send_request()
-        time.sleep(0.5)

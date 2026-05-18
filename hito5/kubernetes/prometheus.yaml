@@ -102,18 +102,18 @@ data:
         rules:
           # 1. Alerta de Drift
           - alert: CardisDataDrift
-            expr: cardis_drift_score > 0.35
+            expr: cardis_drift_share_columns > 0.5
             for: 2m
             labels:
               severity: critical
               action: retrain
             annotations:
               summary: "Drift detectado en CARDIS"
-              description: "El score de drift ({{ $value }}) ha superado el umbral. Iniciando bucle de reentreno."
+              description: "La fracción de features con drift ({{ $value }}) ha superado el umbral. Iniciando bucle de reentreno."
 
           # 2. Alerta de Error Rate
           - alert: HighErrorRate
-            expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.1
+            expr: rate(cardis_http_requests_total{status_code=~"5.."}[5m]) / rate(cardis_http_requests_total[5m]) > 0.1
             for: 5m
             labels:
               severity: warning
@@ -122,14 +122,14 @@ data:
               description: "El inferer está devolviendo más de un 10% de errores 5xx."
 
           # 3. Alerta de Latencia
-          - alert: HighLatency
-            expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 0.5
-            for: 5m
+          - alert: HighTrafficVolume
+            expr: sum(rate(cardis_http_requests_total[1m])) > 2
+            for: 1m
             labels:
               severity: warning
             annotations:
-              summary: "Latencia P99 elevada"
-              description: "El 99% de las predicciones tardan más de 500ms."
+              summary: "Volumen de tráfico elevado"
+              description: "El sistema está recibiendo {{ $value | printf \"%.2f\" }} peticiones por segundo (umbral: 2)."
 
           # 4. Alerta de Pod Caído
           - alert: InfererPodDown

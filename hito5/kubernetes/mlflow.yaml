@@ -16,7 +16,6 @@ spec:
       initContainers:
         - name: create-mlflow-bucket
           image: minio/mc:latest
-          image: minio/mc:RELEASE.2024-09-22T00-33-43Z
           envFrom:
             - secretRef:
                 name: cardis-secrets
@@ -26,11 +25,6 @@ spec:
             - |
               until mc alias set minio http://minio.cardis.svc.cluster.local:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY; do
                 echo "Esperando MinIO..."; sleep 3
-              export MC_CONFIG_DIR=/tmp/.mc
-              until mc alias set minio http://minio.cardis.svc.cluster.local:9000 \
-                    "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY"; do
-                echo "Esperando MinIO en http://minio.cardis.svc.cluster.local:9000..."
-                sleep 3
               done
               mc mb --ignore-existing minio/cardis-mlflow
       containers:
