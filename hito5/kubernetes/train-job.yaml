@@ -15,6 +15,27 @@ spec:
         app: cardis-trainer
     spec:
       restartPolicy: Never
+      initContainers:
+        - name: generate-dataset
+          image: cardis/trainer:1.0.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - python
+            - scripts/generate_synthetic_dataset.py
+            - --output
+            - /app/data/raw/cardis_train.csv
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+        - name: wait-for-mlflow
+          image: curlimages/curl:8.10.1
+          command:
+            - sh
+            - -c
+            - |
+              until curl -sf http://mlflow.cardis.svc.cluster.local:5000/; do
+                echo "Esperando MLflow..."; sleep 5
+              done
       containers:
         - name: trainer
           image: cardis/trainer:1.0.0
@@ -24,19 +45,6 @@ spec:
                 name: cardis-config
             - secretRef:
                 name: cardis-secrets
-          env:
-            - name: MLFLOW_S3_ENDPOINT_URL
-              value: "http://minio.cardis.svc.cluster.local:9000"
-            - name: AWS_ACCESS_KEY_ID
-              valueFrom:
-                secretKeyRef:
-                  name: cardis-secrets
-                  key: MINIO_ACCESS_KEY
-            - name: AWS_SECRET_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: cardis-secrets
-                  key: MINIO_SECRET_KEY
           resources:
             requests:
               cpu: "1"
@@ -46,11 +54,8 @@ spec:
               memory: "4Gi"
           volumeMounts:
             - name: data
-              mountPath: /app/data/processed
-              subPath: processed
-            - name: data
-              mountPath: /app/models
-              subPath: models
+              mountPath: /app/data
+              readOnly: true
       volumes:
         - name: data
           persistentVolumeClaim:
