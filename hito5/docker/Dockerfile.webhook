@@ -22,7 +22,7 @@ WORKDIR /app
 # Instalamos dependencias específicas del Webhook
 # Flask para el servidor, kubernetes para el SDK de K8s y requests para el API
 RUN pip install --upgrade pip \
-    && pip install flask kubernetes requests
+    && pip install flask kubernetes requests minio
 
 # Variables de entorno por defecto
 ENV CARDIS_LOG_LEVEL=INFO \

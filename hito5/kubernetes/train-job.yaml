@@ -40,6 +40,13 @@ spec:
         - name: trainer
           image: cardis/trainer:1.0.0
           imagePullPolicy: IfNotPresent
+          env:
+            - name: LOAD_FROM_MINIO
+              value: "true"
+            - name: MINIO_BUCKET
+              value: "cardis"
+            - name: MINIO_KEY
+              value: "cardis_train.csv"
           envFrom:
             - configMapRef:
                 name: cardis-config

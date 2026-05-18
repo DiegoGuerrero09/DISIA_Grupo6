@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any, Dict
@@ -39,7 +40,7 @@ from sklearn.metrics import (
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
 from .config import MLflowConfig, ModelConfig, Paths, StorageConfig, setup_logging
-from .data_ingestion import load_csv
+from .data_ingestion import load_csv, load_from_minio
 from .features import FeatureBuilder, IsotonicCalibrator, split_xy, write_feature_metadata
 from .model_store import ModelStore
 
@@ -150,7 +151,13 @@ def run(args: argparse.Namespace) -> None:
     paths = Paths()
     paths.ensure()
 
-    df = load_csv(args.input)
+    if os.getenv("LOAD_FROM_MINIO", "false").lower() == "true":
+        df = load_from_minio(
+            bucket=os.getenv("MINIO_BUCKET", "cardis"),
+            key=os.getenv("MINIO_KEY", "cardis_train.csv")
+        )
+    else:
+        df = load_csv(args.input)
     builder = FeatureBuilder(target_col=cfg.target_col)
     df_features = builder.fit_transform(df)
     X, y = df_features, df[cfg.target_col].astype(int)
