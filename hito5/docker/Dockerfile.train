@@ -22,15 +22,18 @@ RUN apt-get update \
 WORKDIR /app
 
 # Instalamos primero las dependencias para aprovechar la cache de Docker.
-COPY requirements/train.txt /app/requirements/train.txt
+COPY hito5/requirements/train.txt /app/requirements/train.txt
 RUN pip install --upgrade pip \
     && pip install -r /app/requirements/train.txt
 
 # Copiamos el codigo fuente. La carpeta data y models se montaran como
 # volumenes para que el modelo entrenado quede disponible al servicio
 # de inferencia.
-COPY src /app/src
-COPY scripts /app/scripts
+COPY hito5/src /app/src/
+COPY hito5/scripts /app/scripts/
+
+RUN mkdir -p /app/data/raw /app/data/processed /app/models
+COPY hito5/data/raw/cardis_train.csv /app/data/raw/cardis_train.csv
 
 ENV CARDIS_DATA_DIR=/app/data \
     CARDIS_MODEL_DIR=/app/models \

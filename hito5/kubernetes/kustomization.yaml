@@ -34,5 +34,6 @@ images:
     newTag: 1.0.0
   - name: cardis/retrain-webhook
     newTag: 1.0.0
-  - name: cardis/inferer-shadow
-    newTag: 1.1.0-retrained
+  - name: cardis/inferer-shadow 
+    newName: cardis/inferer 
+    newTag: 1.0.0
