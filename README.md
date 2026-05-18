@@ -21,6 +21,7 @@ La estructura de este repositorio se define de la siguiente manera:
 
 - **data**: En esta carpeta se encuentra el conjunto de datos que se utilizará para entrenar el modelo de IA. Se divide en _raw_ para los archivos sin procesar, y _processed_ para el conjunto de datos resultante del EDA.
 
-- **src**: Contiene funciones reutilizables para el resto de notebooks.
-
 - **hito2**: Contiene los notebooks generados para el desarrollo del hito 2 (EDA, análisis de sesgos, etc). También contiene figuras que se utilizarán en la documentación de Overleaf.
+- **hito3**: Contiene los notebooks generados para el desarrollo del hito 3 (Modelado). También contiene figuras que se utilizarán en la documentación de Overleaf.
+- **hito4**: Contiene el código necesario para desplegar el sistema básico.
+- **hito5**: Contiene el código necesario para desplegar el sistema avanzado.
