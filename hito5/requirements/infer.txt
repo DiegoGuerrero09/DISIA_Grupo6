@@ -10,4 +10,5 @@ uvicorn[standard]==0.30.6
 pydantic==2.9.2
 prometheus_client==0.21.1
 minio==7.2.9
+requests==2.32.3
 python-multipart==0.0.10
