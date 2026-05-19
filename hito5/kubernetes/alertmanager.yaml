@@ -57,7 +57,7 @@ data:
             parse_mode: 'HTML'
             message: "<b>Drift Crítico:</b> Se ha enviado orden de reentrenamiento al webhook de CARDIS."
         webhook_configs:
-          - url: 'http://cardis-retrain-webhook.cardis.svc.cluster.local:8080/alerts'
+          - url: 'http://cardis-retrain-webhook.cardis.svc.cluster.local:8080/alert'
             send_resolved: false
 ---
 # ---------------------------------------------------------------------------
