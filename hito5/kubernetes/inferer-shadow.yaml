@@ -22,7 +22,7 @@ spec:
         version: shadow
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "80"
+        prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
     spec:
       containers:
@@ -34,7 +34,7 @@ spec:
             - name: IS_SHADOW
               value: "true"
           ports:
-            - containerPort: 80
+            - containerPort: 8080
           resources:
             requests:
               cpu: "100m"
@@ -51,4 +51,4 @@ spec:
     version: shadow
   ports:
     - port: 80
-      targetPort: 80
+      targetPort: 8080
