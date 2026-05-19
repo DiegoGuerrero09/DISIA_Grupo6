@@ -20,6 +20,7 @@ spec:
     metadata:
       labels:
         app: cardis-inferer
+        version: main
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8080"
@@ -83,6 +84,7 @@ metadata:
 spec:
   selector:
     app: cardis-inferer
+    version: main
   ports:
     - name: http
       port: 80
